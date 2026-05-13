@@ -1,0 +1,127 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { listPosts } from "../../../../lib/posts";
+import { getPostType } from "@astropress/core/registry";
+
+const db = Astro.locals.db;
+const user = Astro.locals.user;
+const type = Astro.params.type!;
+
+if (!db || !user) return Astro.redirect("/login");
+
+const postTypeConfig = getPostType(type);
+if (!postTypeConfig) return Astro.redirect("/admin/dashboard");
+
+const status = Astro.url.searchParams.get("status") ?? undefined;
+const page = Number(Astro.url.searchParams.get("page") ?? "1");
+
+const { posts, total } = await listPosts(db, { type, status, page });
+
+const perPage = 20;
+const totalPages = Math.ceil(total / perPage);
+
+const statusOptions = [
+  { value: "", label: "All" },
+  { value: "publish", label: "Published" },
+  { value: "draft", label: "Draft" },
+  { value: "trash", label: "Trash" },
+];
+
+const baseUrl = `/admin/cpt/${type}`;
+const label = postTypeConfig.pluralLabel;
+const singularLabel = postTypeConfig.label;
+---
+<AdminLayout title={label}>
+
+  <h1 class="wp-heading-inline">{label}</h1>
+  <a href={`${baseUrl}/new`} class="page-title-action">Add New</a>
+  <hr class="wp-header-end" />
+
+  <ul class="subsubsub">
+    {statusOptions.map((s) => (
+      <li>
+        <a
+          href={s.value ? `${baseUrl}?status=${s.value}` : baseUrl}
+          class={(status ?? "") === s.value ? "current" : ""}
+        >
+          {s.label}
+        </a>
+      </li>
+    ))}
+  </ul>
+
+  {posts.length === 0 ? (
+    <div class="ap-empty-state">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" style="color:#8c8f94;margin-bottom:12px">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      <h2 style="font-size:15px;font-weight:600;color:#1d2327;margin:0 0 8px">No {label} Yet</h2>
+      <p style="font-size:13px;color:#646970;margin:0 0 20px;line-height:1.5">
+        {status ? `No ${label.toLowerCase()} with status "${status}".` : `Create your first ${singularLabel.toLowerCase()} to get started.`}
+      </p>
+      <a href={`${baseUrl}/new`} class="button button-primary">Add Your First {singularLabel}</a>
+    </div>
+  ) : (
+    <table class="wp-list-table widefat fixed striped">
+      <thead>
+        <tr>
+          <th scope="col" class="manage-column column-primary">Title</th>
+          <th scope="col" class="manage-column" style="width:100px">Status</th>
+          <th scope="col" class="manage-column" style="width:120px">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {posts.map((post) => (
+          <tr>
+            <td class="title column-title has-row-actions column-primary">
+              <strong>
+                <a href={`${baseUrl}/${post.id}`} class="row-title">
+                  {post.title || <em style="font-weight:400;color:#8c8f94">Untitled</em>}
+                </a>
+              </strong>
+              <div style="font-size:11px;color:#8c8f94;font-family:monospace;margin-top:2px">/{post.slug}</div>
+              <div class="row-actions">
+                <span class="edit"><a href={`${baseUrl}/${post.id}`}>Edit</a></span> |
+                <span class="trash">
+                  <button
+                    onclick={`if(confirm('Move to trash?'))fetch('/api/posts/${post.id}',{method:'DELETE'}).then(()=>location.reload())`}
+                    class="ap-row-delete-btn"
+                  >Trash</button>
+                </span>
+              </div>
+            </td>
+            <td>
+              <span style={`display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;background:${post.status === "publish" ? "#d1e7dd" : post.status === "trash" ? "#f8d7da" : "#fff3cd"};color:${post.status === "publish" ? "#146c43" : post.status === "trash" ? "#842029" : "#997404"}`}>
+                {post.status === "publish" ? "Published" : post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+              </span>
+            </td>
+            <td style="color:var(--wp-gray-600);font-size:12px">
+              {post.date.slice(0, 10)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )}
+
+  {totalPages > 1 && (
+    <div class="tablenav bottom">
+      <div class="tablenav-pages">
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+          <a
+            href={`${baseUrl}?page=${p}${status ? `&status=${status}` : ""}`}
+            class={p === page ? "button button-disabled" : "button"}
+            style={p === page ? "font-weight:700" : ""}
+          >
+            {p}
+          </a>
+        ))}
+      </div>
+    </div>
+  )}
+
+</AdminLayout>
+
